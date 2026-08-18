@@ -1,0 +1,59 @@
+name: Daily job search + resume tailoring
+
+on:
+  schedule:
+    - cron: "30 3 * * *"   # 09:00 IST daily - edit to your preferred time (UTC)
+  workflow_dispatch: {}     # lets you trigger it manually from the Actions tab
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests python-docx
+
+      - name: Fetch jobs
+        run: python scripts/fetch_jobs.py
+
+      - name: Match jobs against resume
+        run: python scripts/match_jobs.py
+
+      - name: Tailor resumes with Gemini (free tier)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/tailor_resume.py
+
+      - name: Commit updated data + resumes
+        run: |
+          git config user.name "job-agent-bot"
+          git config user.email "actions@github.com"
+          git add data/*.json tailored_resumes/*.docx
+          git diff --cached --quiet || git commit -m "Daily job matches - $(date -u +%Y-%m-%d)"
+          git push
+
+      - name: Upload dashboard artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy-pages:
+    needs: run-agent
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Job matches</title>
+<style>
+  :root {
+    --ink: #1c1c1a;
+    --ink-soft: #5b5b56;
+    --paper: #faf9f5;
+    --card: #ffffff;
+    --line: #e4e2da;
+    --accent: #2f5d4f;
+    --accent-soft: #e7efec;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+  }
+  header {
+    padding: 2.5rem 1.5rem 1.5rem;
+    max-width: 780px;
+    margin: 0 auto;
+  }
+  header h1 {
+    font-size: 1.6rem;
+    font-weight: 600;
+    margin: 0 0 0.3rem;
+    letter-spacing: -0.01em;
+  }
+  header p {
+    color: var(--ink-soft);
+    margin: 0;
+    font-size: 0.95rem;
+  }
+  #meta {
+    max-width: 780px;
+    margin: 0 auto 1rem;
+    padding: 0 1.5rem;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+  }
+  main {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0 1.5rem 3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.25rem 1.4rem;
+  }
+  .card.applied { opacity: 0.55; }
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .card h2 {
+    font-size: 1.05rem;
+    margin: 0 0 0.2rem;
+    font-weight: 600;
+  }
+  .company {
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    margin: 0 0 0.6rem;
+  }
+  .score-pill {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .why {
+    font-size: 0.9rem;
+    color: var(--ink);
+    margin: 0.4rem 0 0.8rem;
+    line-height: 1.5;
+  }
+  .skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.9rem;
+  }
+  .skill-tag {
+    font-size: 0.75rem;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    color: var(--ink-soft);
+  }
+  .actions {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  .btn {
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.5rem 0.9rem;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .btn.primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .btn.ghost {
+    background: transparent;
+  }
+  .empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Today's job matches</h1>
+  <p>Review each tailored resume, then apply on the company's own site.</p>
+</header>
+<div id="meta"></div>
+<main id="job-list"></main>
+
+<script>
+const DATA_URL = "../data/final_results.json";
+const APPLIED_KEY = "applied_job_ids";
+
+function getApplied() {
+  try { return JSON.parse(localStorage.getItem(APPLIED_KEY) || "[]"); }
+  catch (e) { return []; }
+}
+function markApplied(id) {
+  const applied = new Set(getApplied());
+  applied.add(id);
+  localStorage.setItem(APPLIED_KEY, JSON.stringify([...applied]));
+}
+
+async function render() {
+  const listEl = document.getElementById("job-list");
+  const metaEl = document.getElementById("meta");
+  let jobs = [];
+  try {
+    const res = await fetch(DATA_URL);
+    jobs = await res.json();
+  } catch (e) {
+    listEl.innerHTML = '<div class="empty">No results file found yet. Run the daily workflow, or check back tomorrow.</div>';
+    return;
+  }
+
+  if (!jobs.length) {
+    listEl.innerHTML = '<div class="empty">No strong matches today. The bar stays high on purpose \u2014 check back tomorrow.</div>';
+    return;
+  }
+
+  metaEl.textContent = `${jobs.length} tailored match${jobs.length === 1 ? "" : "es"} \u2014 generated ${new Date().toLocaleDateString()}`;
+
+  const applied = new Set(getApplied());
+
+  listEl.innerHTML = jobs.map(job => {
+    const isApplied = applied.has(job.id);
+    const skills = (job.matched_skills || []).map(s => `<span class="skill-tag">${s}</span>`).join("");
+    const why = job.tailored && job.tailored.why_matched ? job.tailored.why_matched : "";
+    const resumeLink = job.tailored_resume_file
+      ? `<a class="btn ghost" href="../tailored_resumes/${job.tailored_resume_file}" download>Download tailored resume</a>`
+      : "";
+    return `
+      <div class="card ${isApplied ? "applied" : ""}" id="job-${job.id}">
+        <div class="card-top">
+          <div>
+            <h2>${job.title}</h2>
+            <p class="company">${job.company} \u00b7 ${job.location || "Location not specified"}</p>
+          </div>
+          <span class="score-pill">Match ${job.match_score}</span>
+        </div>
+        ${why ? `<p class="why">${why}</p>` : ""}
+        <div class="skills">${skills}</div>
+        <div class="actions">
+          ${resumeLink}
+          <a class="btn primary" href="${job.url}" target="_blank" rel="noopener">Review & apply on site</a>
+          <button class="btn ghost" onclick="markApplied('${job.id}'); document.getElementById('job-${job.id}').classList.add('applied');">
+            ${isApplied ? "Applied \u2713" : "Mark as applied"}
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+render();
+</script>
+</body>
+</html>

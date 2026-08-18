@@ -1,0 +1,16 @@
+[
+  {
+    "id": "sample-1",
+    "source": "greenhouse",
+    "company": "Example Corp",
+    "title": "Junior Data Analyst",
+    "location": "Bengaluru, India",
+    "url": "https://boards.greenhouse.io/example/jobs/12345",
+    "match_score": 9,
+    "matched_skills": ["Python", "SQL", "Power BI", "Tableau"],
+    "tailored": {
+      "why_matched": "This is sample data \u2014 run the pipeline to see your real matches here."
+    },
+    "tailored_resume_file": null
+  }
+]

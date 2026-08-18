@@ -1,0 +1,87 @@
+{
+  "name": "Peddanaggari Mani Vighneswar Reddy",
+  "email": "724saisai@gmail.com",
+  "phone": "+91-8523839345",
+  "linkedin": "LinkedIn (add full URL here)",
+  "seniority": "entry-level / fresher",
+  "target_titles": [
+    "Data Analyst",
+    "Junior Data Analyst",
+    "SQL Developer",
+    "Business Intelligence Analyst",
+    "Python Developer (Entry Level)",
+    "Data Analytics Trainee"
+  ],
+  "core_skills": [
+    "Python",
+    "SQL",
+    "Power BI",
+    "Tableau",
+    "HTML",
+    "CSS",
+    "Query Optimization",
+    "Database Design",
+    "Data Visualization",
+    "Excel"
+  ],
+  "secondary_skills": [
+    "IoT fundamentals",
+    "AI fundamentals",
+    "CDC verification (SoC/hardware)"
+  ],
+  "education": [
+    {
+      "degree": "B.Tech, Electronics and Communication Engineering",
+      "institution": "Sri Venkateswara College of Engineering",
+      "dates": "Aug 2021 - Apr 2025",
+      "score": "68.9%"
+    }
+  ],
+  "certifications": [
+    "Introduction to Internet of Things - NPTEL",
+    "Python Full Stack - EXCELR",
+    "Principles and Techniques of Modern Radar System - NPTEL",
+    "Fundamentals of AI - NPTEL"
+  ],
+  "experience": [
+    {
+      "title": "Data Analytics Job Simulation",
+      "org": "Deloitte Australia (via Forage)",
+      "dates": "December 2025",
+      "bullets": [
+        "Completed a Deloitte job simulation involving data analysis and forensic technology",
+        "Created a data dashboard using Tableau",
+        "Used Excel to classify data and draw business conclusions"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "title": "Clock Domain Crossing (CDC) Verification in SoC",
+      "dates": "Apr 2025",
+      "bullets": [
+        "Identified and resolved Clock Domain Crossing issues in complex SoC designs",
+        "Implemented CDC verification strategies using industry-standard tools",
+        "Improved design reliability by detecting metastability risks"
+      ]
+    },
+    {
+      "title": "Community Service Project on Digital Frauds",
+      "dates": "Jun 2023",
+      "bullets": [
+        "Raised awareness on online scams, phishing, and cyber fraud prevention",
+        "Conducted sessions and prepared materials on safe digital practices"
+      ]
+    }
+  ],
+  "search_keywords": [
+    "data analyst",
+    "sql developer",
+    "python developer entry level",
+    "business intelligence",
+    "power bi analyst",
+    "tableau developer",
+    "junior data analyst",
+    "graduate data analyst"
+  ]
+}
