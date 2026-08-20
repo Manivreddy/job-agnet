@@ -23,8 +23,7 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 
 # --- Configure your target companies here -----------------------------
 # Add any company that publishes a public Greenhouse or Lever board.
-COMPANIES_GREENHOUSE = [
-    "airbnb", "stripe", "notion", "figma", "zomato", "razorpay",
+COMPANIES_GREENHOUSE = [ "razorpaysoftwareprivatelimited", "alphasenseindia", "chargebee", "freshworks", "browserstack", ]
 ]
 COMPANIES_LEVER = [
     "netflix", "shopify", "brex",
