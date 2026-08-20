@@ -23,8 +23,8 @@ jobs:
       - name: Install dependencies
         run: pip install requests python-docx
 
-            - name: Fetch jobs
-          env:
+      - name: Fetch jobs
+        env:
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
         run: python scripts/fetch_jobs.py
