@@ -4,17 +4,19 @@ Pulls fresh job postings from FREE, public, ToS-friendly sources:
   - Greenhouse public job boards (no key needed)
   - Lever public job boards (no key needed)
   - RemoteOK public API (no key needed)
+  - Adzuna job search API (free tier, needs a free API key - see README)
 
 No scraping / no login-walled sites are touched, so this won't get you
 rate-limited or violate site terms of service.
 
-Add/remove companies in COMPANIES_GREENHOUSE / COMPANIES_LEVER below -
-these are just examples. Find a company's board slug by visiting:
+Add/remove companies in COMPANIES_GREENHOUSE / COMPANIES_LEVER below.
+Find a company's board slug by visiting:
   https://boards.greenhouse.io/<slug>
   https://jobs.lever.co/<slug>
 """
 
 import json
+import os
 import time
 import requests
 from pathlib import Path
@@ -22,11 +24,19 @@ from pathlib import Path
 DATA_DIR = Path(__file__).parent.parent / "data"
 
 # --- Configure your target companies here -----------------------------
-# Add any company that publishes a public Greenhouse or Lever board.
-COMPANIES_GREENHOUSE = [ "razorpaysoftwareprivatelimited", "alphasenseindia", "chargebee", "freshworks", "browserstack", ]
+# Verified as of Aug 2026 - re-check with boards.greenhouse.io/<slug> or
+# jobs.lever.co/<slug> occasionally, since companies do switch ATS providers.
+COMPANIES_GREENHOUSE = [
+    "razorpaysoftwareprivatelimited",  # Razorpay
+    "alphasenseindia",                 # AlphaSense India
+    "groww",                           # Groww
+    "chargebee",                       # Chargebee
+    "freshworks",                      # Freshworks
 ]
 COMPANIES_LEVER = [
-    "netflix", "shopify", "brex",
+    "meesho",    # Meesho
+    "whatfix",   # Whatfix
+    "postman",   # Postman
 ]
 
 # Keywords used to pre-filter postings before they even reach the matcher
@@ -34,6 +44,12 @@ KEYWORDS = [
     "data analyst", "sql", "python", "business intelligence",
     "power bi", "tableau", "data analytics",
 ]
+
+# Adzuna is optional - only runs if these env vars are set (both free, see README)
+ADZUNA_APP_ID = os.environ.get("ADZUNA_APP_ID")
+ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY")
+ADZUNA_COUNTRY = "in"  # India; use "gb", "us", etc. for other markets
+ADZUNA_QUERIES = ["data analyst", "sql developer", "business intelligence analyst"]
 
 
 def fetch_greenhouse(slug):
@@ -108,6 +124,41 @@ def fetch_remoteok():
         return []
 
 
+def fetch_adzuna():
+    if not ADZUNA_APP_ID or not ADZUNA_APP_KEY:
+        print("  [adzuna] skipped (ADZUNA_APP_ID / ADZUNA_APP_KEY not set)")
+        return []
+
+    out = []
+    for query in ADZUNA_QUERIES:
+        url = f"https://api.adzuna.com/v1/api/jobs/{ADZUNA_COUNTRY}/search/1"
+        params = {
+            "app_id": ADZUNA_APP_ID,
+            "app_key": ADZUNA_APP_KEY,
+            "results_per_page": 20,
+            "what": query,
+            "content-type": "application/json",
+        }
+        try:
+            r = requests.get(url, params=params, timeout=15)
+            r.raise_for_status()
+            results = r.json().get("results", [])
+            for j in results:
+                out.append({
+                    "source": "adzuna",
+                    "company": (j.get("company") or {}).get("display_name", "Unknown"),
+                    "title": j.get("title", ""),
+                    "location": (j.get("location") or {}).get("display_name", ""),
+                    "url": j.get("redirect_url", ""),
+                    "description": j.get("description", ""),
+                    "id": f"adzuna-{j.get('id')}",
+                })
+        except Exception as e:
+            print(f"  [adzuna:{query}] failed: {e}")
+        time.sleep(0.5)
+    return out
+
+
 def keyword_prefilter(jobs):
     filtered = []
     for j in jobs:
@@ -115,6 +166,17 @@ def keyword_prefilter(jobs):
         if any(k in haystack for k in KEYWORDS):
             filtered.append(j)
     return filtered
+
+
+def dedupe(jobs):
+    seen = set()
+    out = []
+    for j in jobs:
+        if j["id"] in seen:
+            continue
+        seen.add(j["id"])
+        out.append(j)
+    return out
 
 
 def main():
@@ -133,6 +195,10 @@ def main():
     print("Fetching RemoteOK...")
     all_jobs.extend(fetch_remoteok())
 
+    print("Fetching Adzuna...")
+    all_jobs.extend(fetch_adzuna())
+
+    all_jobs = dedupe(all_jobs)
     print(f"Fetched {len(all_jobs)} raw postings")
     filtered = keyword_prefilter(all_jobs)
     print(f"{len(filtered)} postings after keyword pre-filter")
