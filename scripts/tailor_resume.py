@@ -1,17 +1,14 @@
 """
 tailor_resume.py
 For each job in matched_jobs.json, asks Gemini to rewrite the resume's
-summary + bullet points to emphasize what that specific posting wants,
-WITHOUT inventing new experience. Writes one .docx per job.
+summary + bullet points to fit that job, WITHOUT inventing experience.
+Writes one .docx per job.
+
+If the AI step fails for a job, the job is STILL saved to final_results.json
+(without a tailored resume) so it shows up on the dashboard.
 
 Requires: pip install requests python-docx
-Requires env var: GEMINI_API_KEY (free - get one at https://aistudio.google.com/apikey)
-
-Uses Gemini's free tier (gemini-2.0-flash). Free tier has a daily request
-cap (currently generous enough for this - well under it even tailoring
-10 resumes/day) and Google may use free-tier traffic to improve their
-models, unlike paid API traffic. If that trade-off bothers you, see the
-README for how to switch back to a paid model instead.
+Requires env var: GEMINI_API_KEY (free key: https://aistudio.google.com/apikey)
 """
 
 import json
@@ -26,11 +23,10 @@ from docx.shared import Pt
 DATA_DIR = Path(__file__).parent.parent / "data"
 OUT_DIR = Path(__file__).parent.parent / "tailored_resumes"
 
-GEMINI_MODEL = "gemini-2.0-flash"
-GEMINI_URL = (
-    f"https://generativelanguage.googleapis.com/v1beta/models/"
-    f"{GEMINI_MODEL}:generateContent"
-)
+# Tried in order. Google retires models often (gemini-2.0-flash died June 1 2026,
+# gemini-2.5-flash was scheduled for Oct 16 2026), so keep a fallback list.
+GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.5-flash", "gemini-3-flash-preview"]
+_working_model = None
 
 SYSTEM_PROMPT = """You tailor resumes. You NEVER invent skills, employers, dates, \
 degrees, or achievements that are not present in the candidate's original resume \
@@ -51,54 +47,60 @@ Description:
 Return ONLY valid JSON with this exact schema:
 {{
   "summary": "2-3 sentence tailored summary",
-  "highlighted_skills": ["skill1", "skill2", ...],
-  "experience_bullets": ["rewritten bullet 1", "rewritten bullet 2", ...],
-  "project_bullets": ["rewritten bullet 1", "rewritten bullet 2", ...],
+  "highlighted_skills": ["skill1", "skill2"],
+  "experience_bullets": ["rewritten bullet 1", "rewritten bullet 2"],
+  "project_bullets": ["rewritten bullet 1", "rewritten bullet 2"],
   "why_matched": "1 sentence explaining the fit, for your own review"
 }}
 """
 
 
 def call_gemini(api_key, profile, job, retries=3):
+    global _working_model
     prompt = USER_PROMPT_TEMPLATE.format(
         profile_json=json.dumps(profile),
         job_title=job["title"],
         company=job["company"],
-        job_description=job["description"][:4000],  # keep prompt small
+        job_description=job["description"][:4000],
     )
     body = {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0.4,
-            "maxOutputTokens": 1000,
+            "maxOutputTokens": 2000,
             "responseMimeType": "application/json",
         },
     }
+
+    models = [_working_model] if _working_model else GEMINI_MODELS
     last_err = None
-    for attempt in range(retries):
-        try:
-            resp = requests.post(
-                GEMINI_URL,
-                params={"key": api_key},
-                json=body,
-                timeout=30,
-            )
-            if resp.status_code == 429:
-                # free tier rate limit - back off and retry
-                wait = 15 * (attempt + 1)
-                print(f"  rate limited, waiting {wait}s...")
-                time.sleep(wait)
-                continue
-            resp.raise_for_status()
-            data = resp.json()
-            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            text = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-            return json.loads(text)
-        except Exception as e:
-            last_err = e
-            time.sleep(2)
-    raise RuntimeError(f"Gemini call failed after {retries} attempts: {last_err}")
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        for attempt in range(retries):
+            try:
+                resp = requests.post(url, params={"key": api_key}, json=body, timeout=60)
+                if resp.status_code == 429:
+                    wait = 15 * (attempt + 1)
+                    print(f"  [{model}] rate limited, waiting {wait}s...")
+                    time.sleep(wait)
+                    last_err = f"{model}: HTTP 429 {resp.text[:200]}"
+                    continue
+                if resp.status_code in (400, 403, 404):
+                    last_err = f"{model}: HTTP {resp.status_code} {resp.text[:300]}"
+                    print(f"  [{model}] unusable -> {last_err}")
+                    break  # try the next model
+                resp.raise_for_status()
+                data = resp.json()
+                text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                text = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                result = json.loads(text)
+                _working_model = model
+                return result
+            except Exception as e:
+                last_err = f"{model}: {e}"
+                time.sleep(2)
+    raise RuntimeError(f"All Gemini models failed. Last error: {last_err}")
 
 
 def build_docx(profile, tailored, job, out_path):
@@ -107,8 +109,7 @@ def build_docx(profile, tailored, job, out_path):
     style.font.size = Pt(10.5)
 
     doc.add_heading(profile["name"], level=1)
-    contact = f"{profile['phone']} | {profile['email']} | {profile['linkedin']}"
-    doc.add_paragraph(contact)
+    doc.add_paragraph(f"{profile['phone']} | {profile['email']} | {profile['linkedin']}")
 
     doc.add_heading("Summary", level=2)
     doc.add_paragraph(tailored["summary"])
@@ -142,30 +143,39 @@ def build_docx(profile, tailored, job, out_path):
 def main():
     profile = json.loads((DATA_DIR / "resume_profile.json").read_text())
     jobs = json.loads((DATA_DIR / "matched_jobs.json").read_text())
+    print(f"{len(jobs)} matched jobs to process")
 
-    api_key = os.environ["GEMINI_API_KEY"]
+    api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not api_key:
+        print("WARNING: GEMINI_API_KEY is not set - jobs will be listed without tailored resumes")
+
     OUT_DIR.mkdir(exist_ok=True)
 
     results = []
+    tailored_count = 0
     for job in jobs:
         print(f"Tailoring for: {job['title']} @ {job['company']}")
         try:
+            if not api_key:
+                raise RuntimeError("no API key")
             tailored = call_gemini(api_key, profile, job)
+            docx_path = OUT_DIR / f"{job['id'].replace('/', '-')}.docx"
+            build_docx(profile, tailored, job, docx_path)
+            job["tailored"] = tailored
+            job["tailored_resume_file"] = docx_path.name
+            tailored_count += 1
+            time.sleep(4)  # stay under free-tier rate limits
         except Exception as e:
-            print(f"  failed: {e}")
-            continue
-        time.sleep(4)  # stay comfortably under free-tier rate limits
-
-        safe_id = job["id"].replace("/", "-")
-        docx_path = OUT_DIR / f"{safe_id}.docx"
-        build_docx(profile, tailored, job, docx_path)
-
-        job["tailored"] = tailored
-        job["tailored_resume_file"] = str(docx_path.name)
+            print(f"  tailoring failed: {e}")
+            job["tailored"] = {
+                "why_matched": "Tailored resume unavailable for this job (AI step failed). "
+                               "Matched on skills: " + ", ".join(job.get("matched_skills", []))
+            }
+            job["tailored_resume_file"] = None
         results.append(job)
 
     (DATA_DIR / "final_results.json").write_text(json.dumps(results, indent=2))
-    print(f"Done. {len(results)} tailored resumes written to {OUT_DIR}")
+    print(f"Done. {len(results)} jobs saved, {tailored_count} with tailored resumes.")
 
 
 if __name__ == "__main__":
